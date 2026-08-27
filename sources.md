@@ -19,16 +19,24 @@ this table, it is a bug.
 What fraction of failed recurring charges fall into each cause. Drives the
 generator's event mix.
 
+Implemented in `recovery/simulation/params.py` as `CAUSE_WEIGHTS`.
+
 | Cause | Value | Source | Status |
 |---|---|---|---|
-| `insufficient_funds` | TBD | | ☐ |
-| `card_expired` | TBD | | ☐ |
-| `mandate_expired` | TBD | | ☐ |
-| `mandate_revoked` | TBD | | ☐ |
-| `bank_unavailable` | TBD | | ☐ |
-| `network_timeout` | TBD | | ☐ |
-| `hard_decline` | TBD | | ☐ |
-| `authentication_required` | TBD | | ☐ |
+| `insufficient_funds` | 0.45 | "nearly half of all failures" — [Baremetrics](https://baremetrics.com/blog/recover-failed-payments-save-lost-revenue), [Digital Applied](https://www.digitalapplied.com/blog/failed-payment-recovery-dunning-playbook-2026) | ☑ |
+| `card_expired` | 0.15 | named as a primary decline category, same sources | ◐ split assumed |
+| `hard_decline` | 0.12 | same | ◐ split assumed |
+| `authentication_required` | 0.10 | same | ◐ split assumed |
+| `bank_unavailable` | 0.07 | "processor error" category, same | ◐ split assumed |
+| `network_timeout` | 0.05 | same | ◐ split assumed |
+| `mandate_expired` | 0.04 | India-specific; no published split found | `ASSUMPTION` |
+| `mandate_revoked` | 0.02 | India-specific; no published split found | `ASSUMPTION` |
+| overall failure rate | 0.15 | card failure rate "near 15%" — [Baremetrics](https://baremetrics.com/blog/involuntary-churn) | ☑ |
+
+**Honest reading:** only the insufficient-funds share and the overall failure
+rate are properly sourced. The split across the remaining 55% is an assumption
+consistent with the categories those sources name but not with numbers they
+publish. It is swept.
 
 *Where to look:* published dunning/involuntary-churn reports from subscription
 billing vendors; card-network decline-code taxonomies for the soft/hard split.
@@ -42,16 +50,38 @@ billing vendors; card-network decline-code taxonomies for the soft/hard split.
 The load-bearing numbers. `p(success | cause, attempt #, delay)` — the priors
 the Beta-Binomial model starts from before observing anything.
 
-| Cause | Attempt | Delay | p(success) | Source | Status |
-|---|---|---|---|---|---|
-| `insufficient_funds` | 2 | +24h | TBD | | ☐ |
-| `insufficient_funds` | 2 | +3d | TBD | | ☐ |
-| `insufficient_funds` | 2 | post-salary window | TBD | | ☐ |
-| `bank_unavailable` | 2 | +2h | TBD | | ☐ |
-| `network_timeout` | 2 | +1h | TBD | | ☐ |
-| `card_expired` | 2 | any | TBD | | ☐ |
-| `mandate_expired` | 2 | any | TBD (expect ~0) | | ☐ |
-| `hard_decline` | 2 | any | TBD (expect ~0) | | ☐ |
+Implemented as `RECOVERY` in `recovery/simulation/params.py`: a per-cause base
+rate times a delay multiplier, times an attempt-decay factor.
+
+| Cause | Base | Delay shape | Source | Status |
+|---|---|---|---|---|
+| `insufficient_funds` | 0.50 | peaks at 3–5 days | 40–60% band; "spaced 3-5 days apart to align with payday cycles" — [Digital Applied](https://www.digitalapplied.com/blog/failed-payment-recovery-dunning-playbook-2026), [GR4VY](https://gr4vy.com/posts/payment-retry-logic-explained-smart-retries-for-failed-transactions-in-2026/) | ☑ |
+| `card_expired` | 0.08 | flat | 50–70% band is for *recovery*, which comes via card update, not retry — retry alone is near-useless | ◐ interpreted |
+| `bank_unavailable` | 0.75 | peaks at ~2h | transient; "24h rather than 2h improved recovery by 6.5%" implies short delays matter — [GR4VY](https://gr4vy.com/posts/payment-retry-logic-explained-smart-retries-for-failed-transactions-in-2026/) | ◐ interpreted |
+| `network_timeout` | 0.80 | peaks at 1–2h | as above; may surface as late authorisation | ◐ interpreted |
+| `hard_decline` | 0.04 | flat | bottom of the 20–40% fraud-hold band | ◐ interpreted |
+| `authentication_required` | 0.12 | flat | needs customer action; retry alone rarely helps | `ASSUMPTION` |
+| `mandate_expired` / `mandate_revoked` | 0.00 | flat | structurally impossible — no valid mandate, no debit | ☑ by construction |
+
+**Day-of-week and payday effects** (`WEEKDAY_MULTIPLIER`, `PAYDAY_MULTIPLIER`):
+"Tuesday through Thursday typically see the highest approval rates, weekends the
+lowest"; "paydays (1st and 15th) drive spikes in approval for insufficient-funds
+declines" — [GR4VY](https://gr4vy.com/posts/payment-retry-logic-explained-smart-retries-for-failed-transactions-in-2026/), [Solidgate](https://solidgate.com/blog/smart-retries-for-revenue-recovery/). ☑
+
+**Held out — and enforced, not promised.** These live in `recovery/simulation/`,
+and `tests/test_generator.py::test_decision_layer_never_imports_simulation`
+fails the build if any decision-layer module imports that package.
+
+### The sanity ceiling
+
+Published smart-retry uplift over fixed schedules is **15–40%**
+([Solidgate](https://solidgate.com/blog/smart-retries-for-revenue-recovery/),
+[GR4VY](https://gr4vy.com/posts/payment-retry-logic-explained-smart-retries-for-failed-transactions-in-2026/)).
+Recorded as `PLAUSIBLE_UPLIFT_BAND` and asserted in the Day 6 harness.
+
+If our agent reports an uplift far outside that band, **suspect a bug before
+believing the result** — most likely a parameter leak into the policy, or a
+strawman baseline. A result that is too good is evidence against itself.
 
 **Held out from the agent.** These parameters live in the generator's config and
 are never readable by the policy — it must reach its own estimates from observed
@@ -63,11 +93,12 @@ outcomes. Enforced by module boundary, and worth a test.
 
 | Parameter | Value | Source | Status |
 |---|---|---|---|
-| Per-attempt gateway/bank fee | TBD | | ☐ |
-| SMS notification cost | TBD | | ☐ |
-| WhatsApp notification cost | TBD | | ☐ |
-| Customer LTV (for churn penalty) | TBD | | ☐ |
-| `P(churn \| n failed attempts)` | TBD | | `ASSUMPTION` |
+| Per-attempt fee | ₹2 (200 paise) | not sourced | `ASSUMPTION` |
+| Notification cost | ₹0.25 (25 paise) | not sourced | `ASSUMPTION` |
+| Customer LTV | ₹12,000 | not sourced | `ASSUMPTION` |
+| `P(churn \| 1/2/3 attempts)` | 0.01 / 0.03 / 0.07 | not sourced | `ASSUMPTION` |
+
+All four are assumptions and all four are swept. None is dressed up as sourced.
 
 **`P(churn | attempts)` is the softest number in the model** and the one doing
 the most work — it is what makes the agent stop early, which produces the
