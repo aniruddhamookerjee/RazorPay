@@ -1,0 +1,37 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data / artefacts
+*.db
+*.sqlite3
+data/
+runs/
+results.json
+
+# Node (dashboard, from Day 8)
+node_modules/
+dist/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Per-developer Razorpay object ids (plan/subscription) — not shared state
+.razorpay_ids.json
+
+# Tunnel binary (downloaded, not part of the project)
+cloudflared.exe

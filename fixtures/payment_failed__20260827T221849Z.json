@@ -1,0 +1,63 @@
+{
+  "account_id": "acc_XXXXXXXXXXXXXX",
+  "contains": [
+    "payment"
+  ],
+  "created_at": 1787869129,
+  "entity": "event",
+  "event": "payment.failed",
+  "payload": {
+    "payment": {
+      "entity": {
+        "acquirer_data": {
+          "auth_code": null
+        },
+        "amount": 49900,
+        "amount_refunded": 0,
+        "bank": null,
+        "captured": false,
+        "card": {
+          "emi": false,
+          "entity": "card",
+          "id": "card_XXXXXXXXXXXXXX",
+          "international": false,
+          "issuer": "DCBL",
+          "last4": "1007",
+          "name": "",
+          "network": "Visa",
+          "sub_type": "consumer",
+          "token_iin": "410028000",
+          "type": "debit"
+        },
+        "card_id": "card_XXXXXXXXXXXXXX",
+        "contact": "+919876543210",
+        "created_at": 1787869102,
+        "currency": "INR",
+        "description": "#TUxJRKeLGfzyTy",
+        "email": "test.customer@example.com",
+        "entity": "payment",
+        "error_code": "BAD_REQUEST_ERROR",
+        "error_description": "Payment failed",
+        "error_reason": "payment_failed",
+        "error_source": "gateway",
+        "error_step": "payment_authorization",
+        "fee": null,
+        "id": "pay_XXXXXXXXXXXXXX",
+        "international": false,
+        "invoice_id": null,
+        "method": "card",
+        "notes": {
+          "mode": "test",
+          "project": "ai-revenue-recovery"
+        },
+        "order_id": "order_XXXXXXXXXXXXXX",
+        "refund_status": null,
+        "reward": null,
+        "status": "failed",
+        "tax": null,
+        "vpa": null,
+        "wallet": null
+      }
+    }
+  }
+}
