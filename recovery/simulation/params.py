@@ -49,15 +49,42 @@ CAUSE_WEIGHTS: dict[Cause, float] = {
 # three captures, 27 Aug — see sources.md section 7), so the vocabulary comes
 # from Razorpay's documented list instead:
 #   https://razorpay.com/docs/payments/payment-gateway/rainy-day/errors/error-reasons/
+# Every string here must be a real documented Razorpay code AND must round-trip
+# through `recovery/diagnosis/taxonomy.py` to the intended cause. An earlier
+# version of this table invented plausible-looking codes (gateway_error,
+# payment_timeout, invalid_otp, mandate_expired, mandate_revoked) which are not
+# in Razorpay's vocabulary at all — the diagnosis layer classified them all as
+# UNKNOWN and a planted segment effect went undetected. Enforced now by
+# tests/test_diagnosis.py::test_every_generated_reason_round_trips.
 REASON_STRINGS: dict[Cause, tuple[str, ...]] = {
-    Cause.INSUFFICIENT_FUNDS: ("insufficient_funds",),
+    Cause.INSUFFICIENT_FUNDS: (
+        "insufficient_funds",
+        "transaction_limit_exceeded",
+        "transaction_daily_limit_exceeded",
+    ),
     Cause.CARD_EXPIRED: ("card_expired",),
-    Cause.HARD_DECLINE: ("card_declined", "authorisation_declined_by_psp"),
-    Cause.AUTHENTICATION_REQUIRED: ("authentication_failed", "invalid_otp"),
-    Cause.BANK_UNAVAILABLE: ("gateway_error",),
-    Cause.NETWORK_TIMEOUT: ("payment_timeout",),
-    Cause.MANDATE_EXPIRED: ("mandate_expired",),
-    Cause.MANDATE_REVOKED: ("mandate_revoked",),
+    Cause.HARD_DECLINE: (
+        "card_declined",
+        "payment_declined",
+        "authorisation_declined_by_psp",
+        "debit_instrument_blocked",
+        "payment_risk_check_failed",
+    ),
+    Cause.AUTHENTICATION_REQUIRED: (
+        "authentication_failed",
+        "incorrect_otp",
+        "otp_expired",
+        "incorrect_cvv",
+    ),
+    Cause.BANK_UNAVAILABLE: (
+        "bank_not_available",
+        "issuer_technical_error",
+        "gateway_technical_error",
+        "bank_technical_error",
+    ),
+    Cause.NETWORK_TIMEOUT: ("payment_timed_out", "request_timed_out"),
+    Cause.MANDATE_EXPIRED: ("mandate_creation_expired",),
+    Cause.MANDATE_REVOKED: ("mandate_creation_declined", "recurring_payment_not_enabled"),
 }
 
 
