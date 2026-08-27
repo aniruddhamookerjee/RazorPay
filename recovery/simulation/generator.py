@@ -31,6 +31,7 @@ from typing import Any
 
 import numpy as np
 
+from recovery.config import settings
 from recovery.clock import EPOCH
 from recovery.models import (
     AttemptStatus,
@@ -234,6 +235,75 @@ class BatchGenerator:
             },
         )
 
+    def generate_split(
+        self,
+        *,
+        volume_count: int = 10_000,
+        live_count: int | None = None,
+        cycle: int = 0,
+    ) -> tuple[GeneratedBatch, GeneratedBatch]:
+        """Produce the volume batch and the live subset in one draw.
+
+        Two batches with different jobs (WORKPLAN.md Day 2):
+
+        * **volume** — large enough that pattern detection can make a
+          significance claim that means something. Day 3 Part B needs this;
+          a 100-event batch would put 3 rows in a segment cell.
+        * **live subset** — small, and flagged `is_live`, so Day 5 executes it
+          against real Razorpay test APIs. Capped by `LIVE_SUBSET_SIZE` in
+          `.env` so a bug cannot fan out into hundreds of real API calls.
+
+        The subset is drawn from the *same* generated population rather than
+        generated separately, so it is a genuine sample of the batch and not a
+        second distribution that happens to look similar.
+        """
+        live_count = live_count or settings.live_subset_size
+        if live_count > volume_count:
+            raise ValueError("live subset cannot be larger than the volume batch")
+
+        batch = self.generate(volume_count, cycle=cycle)
+
+        # Sample without replacement so the subset is representative.
+        picked = set(
+            self.rng.choice(volume_count, size=live_count, replace=False).tolist()
+        )
+
+        volume_events: list[FailureEvent] = []
+        live_events: list[FailureEvent] = []
+        for i, event in enumerate(batch.events):
+            if i in picked:
+                live_events.append(
+                    event.model_copy(
+                        update={
+                            "attempt": event.attempt.model_copy(
+                                update={"is_live": True}
+                            )
+                        }
+                    )
+                )
+            else:
+                volume_events.append(event)
+
+        def manifest(kind: str, events: tuple[FailureEvent, ...]) -> dict[str, Any]:
+            return {
+                **batch.manifest,
+                "kind": kind,
+                "count": len(events),
+                "at_risk_paise": sum(e.attempt.amount_paise for e in events),
+            }
+
+        volume = GeneratedBatch(
+            events=tuple(volume_events),
+            seed=self.seed,
+            manifest=manifest("volume", tuple(volume_events)),
+        )
+        live = GeneratedBatch(
+            events=tuple(live_events),
+            seed=self.seed,
+            manifest=manifest("live_subset", tuple(live_events)),
+        )
+        return volume, live
+
 
 # ---------------------------------------------------------------------------
 # The answer key
@@ -269,7 +339,27 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--count", type=int, default=100)
     parser.add_argument("--out", default=None, help="Write events to this JSON file.")
+    parser.add_argument(
+        "--split",
+        action="store_true",
+        help="Emit the 10k volume batch plus the live subset (WORKPLAN.md Day 2).",
+    )
     args = parser.parse_args()
+
+    if args.split:
+        volume, live = BatchGenerator(args.seed).generate_split(
+            volume_count=args.count if args.count > 1000 else 10_000
+        )
+        for label, b in (("volume", volume), ("live subset", live)):
+            print(
+                f"{label:<12} {len(b.events):>6} events   "
+                f"Rs {b.manifest['at_risk_paise'] / 100:>14,.2f} at risk"
+            )
+        assert all(e.attempt.is_live for e in live.events)
+        assert not any(e.attempt.is_live for e in volume.events)
+        print()
+        print("is_live flags verified")
+        return
 
     batch = BatchGenerator(args.seed).generate(args.count)
 

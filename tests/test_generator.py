@@ -175,3 +175,33 @@ def test_transient_failures_reward_a_short_delay() -> None:
 
     assert rate(2) > rate(0)
     assert rate(2) > rate(168) - 0.05
+
+
+# -- volume / live-subset split --------------------------------------------
+
+
+def test_split_produces_volume_and_capped_live_subset() -> None:
+    """WORKPLAN.md Day 2: a 10k volume batch plus a small live subset."""
+    volume, live = BatchGenerator(seed=42).generate_split(
+        volume_count=2_000, live_count=50
+    )
+    assert len(volume.events) == 1_950
+    assert len(live.events) == 50
+    # The live subset is what Day 5 fires at real Razorpay APIs, so the flag
+    # has to be right or a simulated event could reach the live executor.
+    assert all(e.attempt.is_live for e in live.events)
+    assert not any(e.attempt.is_live for e in volume.events)
+
+
+def test_live_subset_is_drawn_from_the_same_population() -> None:
+    """A sample of the batch, not a second distribution that looks similar."""
+    volume, live = BatchGenerator(seed=13).generate_split(
+        volume_count=4_000, live_count=400
+    )
+    combined = {e.event_id for e in volume.events} | {e.event_id for e in live.events}
+    assert len(combined) == 4_000
+
+
+def test_live_subset_cannot_exceed_the_batch() -> None:
+    with pytest.raises(ValueError):
+        BatchGenerator(seed=1).generate_split(volume_count=10, live_count=50)

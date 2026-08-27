@@ -227,7 +227,9 @@ The intuitive answers fall out as special cases: a dead mandate has p≈0, so re
 - Virtual clock; generator emits the 10k volume batch + the ~100-event live subset
 - **Write `definitions.md` today, before any metric exists** (see §4.1) — what counts as "recovered" must be pinned before anything measures it
 
-**Done when:** `python -m recovery.generate --seed 42` produces a reproducible batch, the ledger accepts writes, and `definitions.md` is committed.
+**Done when:** `python -m recovery.simulation.generator --seed 42 --split` produces a reproducible volume batch + live subset, the ledger accepts writes, and `definitions.md` is committed.
+
+> Module path note: the generator lives in `recovery/simulation/` rather than `recovery/generate.py`, so the holdout boundary is a package boundary that can be enforced by a test rather than a naming convention.
 
 ### Day 3 — Sat 29 Aug · Diagnosis + pattern detection *(long day — weekend)*
 **Part A — classification (must finish):**
