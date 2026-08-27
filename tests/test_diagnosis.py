@@ -210,3 +210,78 @@ def test_small_segments_are_not_tested(classified) -> None:
     """A segment of 3 events can show a 100% rate and pass any test."""
     findings = detect(classified, min_support=500)
     assert all(f.n_segment >= 500 for f in findings)
+
+
+# -- ground truth, confidence, evaluation ----------------------------------
+
+
+def test_generator_retains_truth_without_labelling_events() -> None:
+    """Day 6's resolve() needs true_cause; the agent must still not see it.
+
+    Caught in the Day 3 audit: the true cause was computed and thrown away, so
+    the experiment harness would have had nothing to score against.
+    """
+    batch = BatchGenerator(7).generate(200)
+    assert len(batch.truth) == 200
+    assert all(e.event_id in batch.truth for e in batch.events)
+    # The events themselves stay unlabelled.
+    assert all(e.cause is Cause.UNKNOWN for e in batch.events)
+
+
+def test_split_carries_truth_to_both_halves() -> None:
+    volume, live = BatchGenerator(7).generate_split(volume_count=500, live_count=50)
+    assert len(volume.truth) == len(volume.events)
+    assert len(live.truth) == len(live.events)
+
+
+def test_pattern_findings_sharpen_confidence(classified) -> None:
+    """A diagnosis corroborated by a segment pattern is better evidenced."""
+    from recovery.diagnosis import apply_to_events
+
+    findings = detect(classified)
+    sharpened = apply_to_events(classified, findings)
+
+    corroborated = [e for e in sharpened if e.segment]
+    assert corroborated, "expected some events to sit in a significant segment"
+
+    by_id = {e.event_id: e for e in classified}
+    for event in corroborated:
+        assert event.confidence >= by_id[event.event_id].confidence
+        assert event.confidence <= 1.0
+
+
+def test_confidence_boost_is_a_nudge_not_a_rewrite(classified) -> None:
+    """A pattern may sharpen a diagnosis; it must not manufacture certainty."""
+    from recovery.diagnosis import apply_to_events
+
+    sharpened = apply_to_events(classified, detect(classified))
+    by_id = {e.event_id: e for e in classified}
+    deltas = [e.confidence - by_id[e.event_id].confidence for e in sharpened]
+    assert max(deltas) <= 0.15
+
+
+def test_evaluation_lives_outside_the_decision_path() -> None:
+    """The evaluation reads ground truth, so it must not sit in diagnosis/.
+
+    Caught in the Day 3 audit: it was written into recovery/diagnosis/ first,
+    which would have broken the holdout boundary.
+    """
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    assert not (repo / "recovery" / "diagnosis" / "evaluate.py").exists()
+    assert (repo / "recovery" / "experiment" / "evaluate.py").exists()
+
+
+def test_classifier_and_taxonomy_agree_on_the_whole_batch() -> None:
+    """End-to-end: generate -> classify -> score against truth."""
+    from recovery.experiment.evaluate import score
+
+    batch = BatchGenerator(5).generate(2_000)
+    classified = Classifier(use_model=False).classify_all(batch.events)
+    result = score(classified, batch.truth)
+
+    assert result["n"] == 2_000
+    # Perfect by construction (documented codes in, documented codes mapped) —
+    # this asserts the two tables agree, not that the classifier is clever.
+    assert result["accuracy"] == 1.0

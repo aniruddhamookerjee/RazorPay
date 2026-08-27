@@ -23,7 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -63,11 +63,25 @@ def _envelope_template() -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class GeneratedBatch:
-    """A reproducible batch plus the manifest needed to reproduce it."""
+    """A reproducible batch, its manifest, and the ground truth behind it.
+
+    `truth` maps event_id -> the cause the generator actually used. Two things
+    need it and neither is the agent:
+
+    * the Day 6 harness, which must pass `true_cause` to `resolve()` to score
+      what an arm chose;
+    * the classifier evaluation, which measures diagnosis accuracy.
+
+    It lives on the batch rather than on the events themselves precisely so it
+    cannot leak: the classifier is handed `batch.events`, never the batch. The
+    holdout boundary is about who can *read* this, and the answer is the
+    harness and the evaluation, not the decision path.
+    """
 
     events: tuple[FailureEvent, ...]
     seed: int
     manifest: dict[str, Any]
+    truth: dict[str, Cause] = dataclass_field(default_factory=dict)
 
 
 class BatchGenerator:
@@ -164,6 +178,7 @@ class BatchGenerator:
 
     def generate(self, count: int, *, cycle: int = 0) -> GeneratedBatch:
         events: list[FailureEvent] = []
+        truth: dict[str, Cause] = {}
 
         for i in range(count):
             amount = int(
@@ -202,8 +217,7 @@ class BatchGenerator:
                 is_live=False,
             )
 
-            events.append(
-                FailureEvent(
+            event = FailureEvent(
                     attempt=attempt,
                     error_code="BAD_REQUEST_ERROR",
                     error_reason=reason,
@@ -219,12 +233,14 @@ class BatchGenerator:
                         issuer=issuer,
                         occurred_at=occurred_at,
                     ),
-                )
             )
+            events.append(event)
+            truth[event.event_id] = cause
 
         return GeneratedBatch(
             events=tuple(events),
             seed=self.seed,
+            truth=truth,
             manifest={
                 "seed": self.seed,
                 "count": count,
@@ -295,11 +311,13 @@ class BatchGenerator:
         volume = GeneratedBatch(
             events=tuple(volume_events),
             seed=self.seed,
+            truth={e.event_id: batch.truth[e.event_id] for e in volume_events},
             manifest=manifest("volume", tuple(volume_events)),
         )
         live = GeneratedBatch(
             events=tuple(live_events),
             seed=self.seed,
+            truth={e.event_id: batch.truth[e.event_id] for e in live_events},
             manifest=manifest("live_subset", tuple(live_events)),
         )
         return volume, live

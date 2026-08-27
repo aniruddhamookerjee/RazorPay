@@ -12,11 +12,15 @@ boundary, enforced by `tests/test_generator.py`.
 """
 
 from recovery.diagnosis.classifier import Classifier, classify_reason
+from recovery.diagnosis.patterns import Finding, apply_to_events, detect
 from recovery.diagnosis.segments import Segment, issuing_bank, segments_for
 from recovery.diagnosis.taxonomy import REASON_TO_CAUSE, cause_for_reason
 
 __all__ = [
     "Classifier",
+    "Finding",
+    "apply_to_events",
+    "detect",
     "classify_reason",
     "REASON_TO_CAUSE",
     "cause_for_reason",

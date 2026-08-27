@@ -175,6 +175,47 @@ def detect(
     return findings
 
 
+def apply_to_events(
+    events: tuple[FailureEvent, ...], findings: list[Finding]
+) -> tuple[FailureEvent, ...]:
+    """Sharpen each event's confidence using the segment patterns it sits in.
+
+    WORKPLAN.md Day 3 Part B: "confidence score attached to each diagnosis".
+    A diagnosis corroborated by a significant segment pattern is worth more than
+    the same label assigned in isolation — if this issuer demonstrably produces
+    bank outages at 2.6x the rest of the book, `bank_unavailable` here is better
+    evidenced.
+
+    The event also records *which* segment vouched for it, so the audit trail
+    can show the reasoning rather than just a higher number.
+    """
+    boost = confidence_boost(findings)
+    if not boost:
+        return events
+
+    updated: list[FailureEvent] = []
+    for event in events:
+        best_segment, best_boost = None, 0.0
+        for segment in segments_for(event):
+            gain = boost.get((str(segment), event.cause), 0.0)
+            if gain > best_boost:
+                best_segment, best_boost = str(segment), gain
+
+        if best_segment is None:
+            updated.append(event)
+            continue
+
+        updated.append(
+            event.model_copy(
+                update={
+                    "confidence": min(1.0, event.confidence + best_boost),
+                    "segment": best_segment,
+                }
+            )
+        )
+    return tuple(updated)
+
+
 def confidence_boost(findings: list[Finding]) -> dict[tuple[str, Cause], float]:
     """Map (segment string, cause) -> a diagnostic confidence bump.
 
