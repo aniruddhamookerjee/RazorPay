@@ -35,3 +35,6 @@ Thumbs.db
 
 # Tunnel binary (downloaded, not part of the project)
 cloudflared.exe
+
+# Experiment output (regenerate with: python -m recovery.experiment --out results.json)
+results.json

@@ -39,6 +39,11 @@ from recovery.decision import compliance
 from recovery.decision.compliance import ComplianceContext
 from recovery.decision.costs import CostModel
 from recovery.decision.priors import CANDIDATE_DELAYS_HOURS
+
+# Contact actions get a shorter, denser delay ladder than debits. The point is
+# only to step over a quiet-hours window, not to sit on a message for days —
+# an unsent dunning message loses value fast.
+CONTACT_DELAYS_HOURS: tuple[int, ...] = (0, 3, 6, 9, 12)
 from recovery.decision.success import SuccessModel
 from recovery.models import (
     Action,
@@ -215,17 +220,39 @@ class Policy:
                 )
             )
 
-        for action in (Action.REQUEST_REAUTH, Action.NOTIFY, Action.WAIT):
-            scores.append(
-                self._score(
-                    action=action,
-                    cause=cause,
-                    amount_paise=amount,
-                    attempts_so_far=attempts_so_far,
-                    delay_hours=0,
-                    ctx=base_ctx,
+        # Contact actions are scored at delays too, not only at "now". Scoring
+        # them only at zero meant a case that failed at 11pm had its
+        # notification blocked by quiet hours outright, rather than scheduled
+        # for the morning — 430 blocked actions in a 500-event batch, and the
+        # recovery those cases might have produced simply lost.
+        for action in (Action.REQUEST_REAUTH, Action.NOTIFY):
+            for delay in CONTACT_DELAYS_HOURS:
+                scheduled = now + timedelta(hours=delay)
+                if scheduled - first_failure_at >= timedelta(
+                    days=settings.recovery_window_days
+                ):
+                    continue
+                scores.append(
+                    self._score(
+                        action=action,
+                        cause=cause,
+                        amount_paise=amount,
+                        attempts_so_far=attempts_so_far,
+                        delay_hours=delay,
+                        ctx=replace(base_ctx, scheduled_for=scheduled),
+                    )
                 )
+
+        scores.append(
+            self._score(
+                action=Action.WAIT,
+                cause=cause,
+                amount_paise=amount,
+                attempts_so_far=attempts_so_far,
+                delay_hours=0,
+                ctx=base_ctx,
             )
+        )
 
         # 4. Best allowed action. `stop` is always available at zero, so an
         # action is taken only when it genuinely beats doing nothing.
