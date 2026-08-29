@@ -129,15 +129,24 @@ behaves this way. Never presented as a finding about any real institution.
 Not simulation parameters — hard constraints. Cited because a judge may check
 them, and because getting them wrong is worse than getting a rate wrong.
 
-| Rule | Value | Source | Status |
-|---|---|---|---|
-| RBI e-mandate pre-debit notification | 24h before debit | | ☐ |
-| AFA threshold for recurring e-mandates | ₹15,000 | | ☐ |
-| Per-mandate retry limits | TBD | | ☐ |
-| Consent / DND for messaging | TBD | | ☐ |
+Implemented in `recovery/decision/compliance.py`, all in one named-constant
+block marked UNVERIFIED.
 
-Verify against the RBI circulars directly rather than secondary summaries —
-these have been revised more than once.
+| Rule | Value used | Source | Status |
+|---|---|---|---|
+| RBI e-mandate pre-debit notification | 24h before debit | secondary sources only | ⚠ **UNVERIFIED** |
+| AFA threshold for recurring e-mandates | ₹15,000 | secondary sources only | ⚠ **UNVERIFIED** |
+| Quiet hours for messaging | 21:00–08:00 | conservative interpretation of TRAI | ⚠ **UNVERIFIED** |
+| Per-mandate retry limits | not implemented | — | ☐ gap |
+
+⚠ **These need a human to check them against RBI circulars before submission.**
+They come from secondary sources, not from the circulars read directly, and RBI
+has revised the e-mandate framework more than once. Compliance is named in the
+track's bar, and a wrong threshold is the error a payments judge spots fastest.
+
+They are deliberately grouped in one constant block so verification is a
+five-minute job rather than a hunt through the codebase. The AFA threshold also
+reads from `.env` (`AFA_THRESHOLD_INR`), so correcting it needs no code change.
 
 ---
 
