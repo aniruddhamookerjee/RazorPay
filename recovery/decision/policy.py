@@ -31,9 +31,10 @@ their reasons. A decision you cannot interrogate is not auditable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
+from recovery.config import settings
 from recovery.decision import compliance
 from recovery.decision.compliance import ComplianceContext
 from recovery.decision.costs import CostModel
@@ -71,6 +72,18 @@ class Policy:
         delay_hours: int,
         ctx: ComplianceContext,
     ) -> ActionScore:
+        if action is Action.STOP:
+            # The baseline every other action must beat. Exactly zero: stopping
+            # neither earns nor costs, and that is the whole point of it.
+            # Returned before scoring — a belief about "do nothing" is meaningless
+            # and this runs in the Day 6 hot loop.
+            return ActionScore(
+                action=Action.STOP,
+                expected_value_paise=0.0,
+                p_success=0.0,
+                rationale="do nothing further; the bar every other action must clear",
+            )
+
         verdict = compliance.check(action, ctx)
 
         belief = self.success.belief(
@@ -83,18 +96,7 @@ class Policy:
             action,
             attempts_so_far=attempts_so_far,
             amount_paise=amount_paise,
-            cause=cause,
         )
-
-        if action is Action.STOP:
-            # The baseline every other action must beat. Exactly zero: stopping
-            # neither earns nor costs, and that is the whole point of it.
-            return ActionScore(
-                action=Action.STOP,
-                expected_value_paise=0.0,
-                p_success=0.0,
-                rationale="do nothing further; the bar every other action must clear",
-            )
 
         expected = belief.mean * amount_paise - breakdown.total_paise
 
@@ -193,7 +195,12 @@ class Policy:
             action = Action.RETRY_NOW if delay == 0 else Action.RETRY_DELAYED
             scheduled = now + timedelta(hours=delay)
             # A retry scheduled past the window is not a candidate at all.
-            if scheduled - first_failure_at >= timedelta(days=7):
+            # Read from settings, not a literal: compliance.should_stop uses the
+            # same setting, and the two drifting apart would let the scheduler
+            # book retries the stopping rule would refuse.
+            if scheduled - first_failure_at >= timedelta(
+                days=settings.recovery_window_days
+            ):
                 continue
             scores.append(
                 self._score(
@@ -202,9 +209,7 @@ class Policy:
                     amount_paise=amount,
                     attempts_so_far=attempts_so_far,
                     delay_hours=delay,
-                    ctx=ComplianceContext(
-                        **{**base_ctx.__dict__, "scheduled_for": scheduled}
-                    ),
+                    ctx=replace(base_ctx, scheduled_for=scheduled),
                 )
             )
 

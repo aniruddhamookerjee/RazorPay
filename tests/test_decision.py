@@ -150,17 +150,35 @@ def test_pending_outcomes_teach_nothing() -> None:
 # -- EV arithmetic ---------------------------------------------------------
 
 
-def test_ev_is_probability_times_amount_minus_costs() -> None:
+def test_ev_arithmetic_matches_the_scores_the_policy_reports(by_cause) -> None:
+    """Recompute EV independently and check the policy's own table agrees.
+
+    The earlier version of this test compared the formula against itself and
+    reduced to 200 == 200. This one derives the expected value from the model
+    and the cost table, then asserts the *published* score matches — so a change
+    to the policy's arithmetic breaks it.
+    """
     costs = CostModel(attempt_cost_paise=200, churn_penalty_enabled=False, ltv_months=0)
-    model = SuccessModel()
-    belief = model.belief(
+    policy = Policy(success=SuccessModel(), costs=costs)
+    event = by_cause[Cause.INSUFFICIENT_FUNDS]
+    amount = event.attempt.amount_paise
+
+    decision = decide(policy, event)
+    retry = next(
+        s for s in decision.scores
+        if s.action is Action.RETRY_NOW and s.blocked_by is None
+    )
+
+    belief = policy.success.belief(
         cause=Cause.INSUFFICIENT_FUNDS, action=Action.RETRY_NOW, attempt_number=2
     )
-    breakdown = costs.cost_of(Action.RETRY_NOW, attempts_so_far=1, amount_paise=49_900)
+    breakdown = costs.cost_of(Action.RETRY_NOW, attempts_so_far=1, amount_paise=amount)
+
     assert breakdown.churn_penalty_paise == 0.0
-    assert breakdown.direct_paise == 200
-    expected = belief.mean * 49_900 - 200
-    assert expected == pytest.approx(belief.mean * 49_900 - breakdown.total_paise)
+    assert retry.p_success == pytest.approx(belief.mean)
+    assert retry.expected_value_paise == pytest.approx(
+        belief.mean * amount - breakdown.total_paise
+    )
 
 
 def test_ltv_scales_with_the_charge() -> None:
@@ -371,3 +389,34 @@ def test_zero_cost_model_makes_action_cheap_but_not_illegal(by_cause) -> None:
     # Dead mandates stay refused regardless of how cheap acting becomes.
     dead = decide(policy, by_cause[Cause.MANDATE_REVOKED])
     assert dead.chosen_action not in (Action.RETRY_NOW, Action.RETRY_DELAYED)
+
+
+# -- regressions from the Day 4 code audit ---------------------------------
+
+
+def test_recovery_window_is_settings_driven_everywhere() -> None:
+    """The scheduler once hardcoded 7 days while the stopping rule read config.
+
+    Setting RECOVERY_WINDOW_DAYS=3 would then have stopped cases at three days
+    while still booking retries out to seven — the two rules silently disagreeing.
+    """
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parent.parent / "recovery" / "decision" / "policy.py"
+    ).read_text(encoding="utf-8")
+    assert "timedelta(days=7)" not in source
+    assert "settings.recovery_window_days" in source
+
+
+def test_reading_a_belief_does_not_grow_the_model() -> None:
+    """A defaultdict inserted a cell on every read.
+
+    Correctness survived, but the pooling loop walks the cells and Day 6 replays
+    millions of decisions, so reads quietly inflating the model is a real cost.
+    """
+    model = SuccessModel()
+    for _ in range(50):
+        model.belief(cause=Cause.INSUFFICIENT_FUNDS, action=Action.RETRY_NOW)
+    assert len(model._trials) == 0
+    assert model.is_cold

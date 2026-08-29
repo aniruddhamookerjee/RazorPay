@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from recovery.models import Action, Cause
+from recovery.models import Action
 
 # ASSUMPTION — no published Razorpay figure used. Swept on Day 7.
 DEFAULT_ATTEMPT_COST_PAISE = 200
@@ -86,7 +86,6 @@ class CostModel:
         *,
         attempts_so_far: int,
         amount_paise: int,
-        cause: Cause | None = None,
     ) -> CostBreakdown:
         """What taking `action` costs right now, for a charge of this size."""
         # Doing nothing costs nothing. WAIT and STOP are genuinely free, which

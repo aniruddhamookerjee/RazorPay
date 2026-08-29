@@ -21,7 +21,6 @@ so the learning is demonstrated instead of claimed.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 
 from recovery.decision.priors import (
@@ -72,8 +71,16 @@ class SuccessModel:
     """
 
     prior_strength: float = PRIOR_STRENGTH
-    _successes: dict[Cell, int] = field(default_factory=lambda: defaultdict(int), repr=False)
-    _trials: dict[Cell, int] = field(default_factory=lambda: defaultdict(int), repr=False)
+    # Plain dicts, not defaultdicts: a defaultdict inserts on *read*, so merely
+    # asking for a belief grew the model. Harmless for correctness, but the
+    # pooling loop below walks every cell, and Day 6 replays ~2.7M decisions.
+    _successes: dict[Cell, int] = field(default_factory=dict, repr=False)
+    _trials: dict[Cell, int] = field(default_factory=dict, repr=False)
+    # Cells grouped by (cause, action, bucket) so pooling does not scan
+    # everything that has ever been observed.
+    _by_group: dict[tuple[Cause, Action, int], list[Cell]] = field(
+        default_factory=dict, repr=False
+    )
 
     # -- learning ----------------------------------------------------------
 
@@ -89,7 +96,12 @@ class SuccessModel:
         """Record one real outcome. The only way evidence enters the model."""
         if outcome is AttemptStatus.PENDING:
             return  # not resolved yet; nothing to learn
-        cell = (cause, action, delay_bucket(delay_hours), attempt_number)
+        bucket = delay_bucket(delay_hours)
+        cell = (cause, action, bucket, attempt_number)
+        if cell not in self._trials:
+            self._trials[cell] = 0
+            self._successes[cell] = 0
+            self._by_group.setdefault((cause, action, bucket), []).append(cell)
         self._trials[cell] += 1
         if outcome is AttemptStatus.SUCCEEDED:
             self._successes[cell] += 1
@@ -114,15 +126,16 @@ class SuccessModel:
         bucket = delay_bucket(delay_hours)
         exact: Cell = (cause, action, bucket, attempt_number)
 
-        successes = float(self._successes[exact])
-        trials = float(self._trials[exact])
+        successes = float(self._successes.get(exact, 0))
+        trials = float(self._trials.get(exact, 0))
         direct_trials = int(trials)
 
         if trials < 10:
-            for (c, a, b, _n), n_trials in self._trials.items():
-                if (c, a, b) == (cause, action, bucket) and _n != attempt_number:
-                    trials += 0.5 * n_trials
-                    successes += 0.5 * self._successes[(c, a, b, _n)]
+            for cell in self._by_group.get((cause, action, bucket), ()):
+                if cell[3] == attempt_number:
+                    continue
+                trials += 0.5 * self._trials[cell]
+                successes += 0.5 * self._successes[cell]
 
         rate = prior_rate(cause, action)
 
