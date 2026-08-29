@@ -373,6 +373,35 @@ If cycles have to be cut for time, the honest framing changes to: *"the priors a
 
 ## 7. The claim we are aiming to be able to make
 
-> *"Across 30 seeded replays of a 10,000-event batch, the cause-aware agent recovered **₹X net** versus **₹Y** for a fixed-3× retry baseline on the identical events — a paired difference of **+₹D** (95% CI: …) — using **Z% fewer attempts**, with **zero** compliance-rule violations and a complete audit trail for every action taken and every action blocked. The batch is simulated on published recovery benchmarks; the advantage holds for any day-3 insufficient-funds recovery rate above ~N%."*
+**Superseded by measurement — see [FINDINGS.md](FINDINGS.md).** The claim below
+is what we set out to prove. Two of its assertions turned out to be false, and
+they are kept here rather than quietly edited so the difference is visible:
 
-Every number in that sentence must be reproducible from the repo by a stranger.
+> ~~"…using **Z% fewer attempts**…the advantage holds for any day-3
+> insufficient-funds recovery rate above ~N%."~~
+
+- **"Fewer attempts" is false.** The agent uses 5,400 attempts against the
+  baseline's 3,581 and wastes more. It wins on money, not efficiency.
+- **"Smarter retry timing" is false as the mechanism.** Flattening the delay
+  curve so timing is worthless *increases* the agent's advantage from +33.9% to
+  +133.5%. The result comes from cause-aware triage — declining dead mandates
+  and hard declines, and using re-auth where retries cannot work.
+
+What the data does support:
+
+> *"Across 30 seeded replays of a 2,000-event batch over 3 billing cycles, the
+> cause-aware agent recovered **₹1,365,813 net** versus **₹886,153** for a
+> fixed-3× retry baseline on identical events with identical coin flips — a
+> paired difference of **+₹479,660** (95% CI +₹361,762 to +₹597,557), with
+> **zero** compliance-rule violations and a complete audit trail for every
+> action taken and every action blocked. The advantage comes from declining
+> unrecoverable cases and choosing the right channel, not from retry timing. It
+> reverses in a world where recovery rates are half those published, and where
+> customer lifetime is 36 months."*
+
+Every number in that sentence is reproducible from the repo by a stranger:
+
+```
+python -m recovery.experiment --seeds 30 --cycles 3 --batch 2000
+python -m recovery.experiment.sensitivity
+```

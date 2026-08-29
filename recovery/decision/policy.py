@@ -64,6 +64,11 @@ class Policy:
 
     success: SuccessModel
     costs: CostModel
+    # When set, the policy may only retry (plus the pre-debit notice a retry
+    # legally requires). Used for the retry-only arm, so the smart-retry gain
+    # can be quoted against the published band without the extra channels
+    # inflating it.
+    retry_only: bool = False
 
     # -- scoring -----------------------------------------------------------
 
@@ -225,7 +230,10 @@ class Policy:
         # notification blocked by quiet hours outright, rather than scheduled
         # for the morning — 430 blocked actions in a 500-event batch, and the
         # recovery those cases might have produced simply lost.
-        for action in (Action.REQUEST_REAUTH, Action.NOTIFY):
+        contact_actions = (
+            (Action.NOTIFY,) if self.retry_only else (Action.REQUEST_REAUTH, Action.NOTIFY)
+        )
+        for action in contact_actions:
             for delay in CONTACT_DELAYS_HOURS:
                 scheduled = now + timedelta(hours=delay)
                 if scheduled - first_failure_at >= timedelta(

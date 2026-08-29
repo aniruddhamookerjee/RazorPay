@@ -195,8 +195,13 @@ def test_an_interval_spanning_zero_is_not_significant() -> None:
 
 def test_experiment_runs_and_reports_every_arm() -> None:
     result = run_experiment(seeds=2, cycles=2, batch_size=120)
-    assert set(result.arms) == {Arm.NAIVE, Arm.FIXED_3X, Arm.AGENT}
-    assert len(result.comparisons) == 3
+    assert set(result.arms) == {
+        Arm.NAIVE,
+        Arm.FIXED_3X,
+        Arm.AGENT_RETRY_ONLY,
+        Arm.AGENT,
+    }
+    assert len(result.comparisons) == 4
     summary = result.summary()
     assert summary[Arm.AGENT.value]["recovery_rate"] > 0
 
@@ -222,7 +227,11 @@ def test_the_plausibility_check_flags_an_implausible_result() -> None:
     fake = ExperimentResult(
         arms={a: [ArmResult(arm=a)] for a in Arm},
         comparisons=[
-            Comparison("agent vs fixed-3x", 1e9, 1e9, 1e9, 30, relative_uplift=5.0)
+            # The plausibility check judges the retry-only arm: the published
+            # band measures retry timing against retry timing.
+            Comparison(
+                "agent (retry-only) vs fixed-3x", 1e9, 1e9, 1e9, 30, relative_uplift=5.0
+            )
         ],
         seeds=30,
         cycles=3,
@@ -240,3 +249,54 @@ def test_the_churn_penalty_can_be_switched_off_end_to_end() -> None:
     )
     assert result.churn_penalty_enabled is False
     assert result.summary()[Arm.AGENT.value]["net_paise"] != 0
+
+
+# -- sensitivity -----------------------------------------------------------
+
+
+def test_flattening_the_delay_curve_actually_flattens_it() -> None:
+    """The sweep's central manipulation must do what it claims.
+
+    If this were a no-op, the finding that the agent's advantage does not come
+    from retry timing would be an artefact of a broken context manager rather
+    than a result.
+    """
+    from recovery.experiment.sensitivity import flattened_delay_curves
+    from recovery.simulation import params as P
+
+    before = dict(P.RECOVERY[Cause.INSUFFICIENT_FUNDS].delay_multiplier)
+    with flattened_delay_curves(0.0):
+        during = dict(P.RECOVERY[Cause.INSUFFICIENT_FUNDS].delay_multiplier)
+        assert len(set(round(v, 9) for v in during.values())) == 1
+    after = dict(P.RECOVERY[Cause.INSUFFICIENT_FUNDS].delay_multiplier)
+
+    assert len(set(round(v, 9) for v in before.values())) > 1
+    assert after == before, "the sweep must restore the world it borrowed"
+
+
+def test_scaling_base_rates_restores_afterwards() -> None:
+    from recovery.experiment.sensitivity import scaled_base_rates
+    from recovery.simulation import params as P
+
+    before = P.RECOVERY[Cause.INSUFFICIENT_FUNDS].base
+    with scaled_base_rates(0.5):
+        assert P.RECOVERY[Cause.INSUFFICIENT_FUNDS].base == pytest.approx(before * 0.5)
+    assert P.RECOVERY[Cause.INSUFFICIENT_FUNDS].base == before
+
+
+def test_retry_only_agent_never_requests_reauth(batch) -> None:
+    """The like-for-like arm must actually be restricted, or the comparison
+    against the published retry-timing band means nothing."""
+    from recovery.decision import Policy, SuccessModel
+
+    classifier = Classifier(use_model=False)
+    policy = Policy(success=SuccessModel(), costs=CostModel(), retry_only=True)
+    for event in batch.events[:60]:
+        decision = policy.decide(
+            classifier.classify(event),
+            now=NOW,
+            attempts_so_far=1,
+            first_failure_at=NOW - timedelta(hours=2),
+            pre_debit_notice_sent_at=NOW - timedelta(hours=30),
+        )
+        assert decision.chosen_action is not Action.REQUEST_REAUTH

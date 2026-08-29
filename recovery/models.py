@@ -92,10 +92,17 @@ class DecisionStatus(str, Enum):
 
 
 class Arm(str, Enum):
-    """Experiment arm (Day 6). Paired replay: all arms see identical events."""
+    """Experiment arm. Paired replay: all arms see identical events."""
 
     NAIVE = "naive"
     FIXED_3X = "fixed_3x"
+    # The agent restricted to retry timing only — no re-auth, no notifications
+    # beyond the pre-debit notice. This is the arm that is comparable to the
+    # published 15-40% smart-retry band, because that band measures retry
+    # timing against retry timing. The full agent also uses channels the
+    # baselines never touch, so quoting IT against that band overstates the
+    # like-for-like gain.
+    AGENT_RETRY_ONLY = "agent_retry_only"
     AGENT = "agent"
 
 

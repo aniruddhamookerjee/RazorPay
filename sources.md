@@ -154,10 +154,22 @@ block marked UNVERIFIED.
 
 | Rule | Value used | Source | Status |
 |---|---|---|---|
-| RBI e-mandate pre-debit notification | 24h before debit | secondary sources only | ⚠ **UNVERIFIED** |
-| AFA threshold for recurring e-mandates | ₹15,000 | secondary sources only | ⚠ **UNVERIFIED** |
-| Quiet hours for messaging | 21:00–08:00 | conservative interpretation of TRAI | ⚠ **UNVERIFIED** |
-| Per-mandate retry limits | not implemented | — | ☐ gap |
+| RBI e-mandate pre-debit notification | 24h before debit | [Razorpay](https://razorpay.com/blog/rbi-e-mandate-regulations/), [Chargebee](https://www.chargebee.com/docs/payments/2.0/others/rbi-e-mandate) | ☑ checked |
+| AFA threshold for recurring e-mandates | ₹15,000 (up from ₹5,000) | [Inc42](https://inc42.com/buzz/rbi-increases-e-mandate-limit-for-recurring-payments-to-inr-15000/), [Business Standard](https://www.business-standard.com/article/finance/new-e-mandate-guidelines-rbi-enhances-limit-for-e-mandates-on-credit-debit-cards-to-rs-15-000-122060800417_1.html) | ☑ checked |
+| AFA exemption threshold | ₹1,00,000 for mutual funds, insurance premiums, credit-card bills | [Business Standard](https://www.business-standard.com/amp/economy/interviews/rbi-raises-limit-of-e-mandates-for-recurring-online-transactions-to-1-lakh-123120801110_1.html) | ☑ **was missing** |
+| Post-debit notification | required: merchant, amount, time, reference, reason | [Razorpay](https://razorpay.com/blog/rbi-e-mandate-regulations/) | ⚠ **modelled, not enforced** |
+| Per-mandate maximum and debit count | enforced from the mandate's own registered limits | mandate terms, not a regulation | ☑ implemented |
+| Quiet hours for messaging | 21:00–08:00 | conservative reading of TRAI | ⚠ interpretation |
+
+**Two gaps were found by doing this verification**, which is the argument for
+doing it rather than leaving the numbers as assumptions:
+
+1. The ₹1,00,000 exemption for named categories was absent, so the code blocked
+   lawful debits between ₹15k and ₹1L for mutual-fund, insurance and
+   credit-card-bill merchants — costing recovery for no reason.
+2. The **post-debit notification** requirement was missing entirely. It is now
+   represented in `compliance.py` but not yet enforced end to end, and that
+   status is stated rather than glossed.
 
 ⚠ **These need a human to check them against RBI circulars before submission.**
 They come from secondary sources, not from the circulars read directly, and RBI

@@ -44,13 +44,13 @@ def main() -> None:
     print(f"ran in {elapsed:.1f}s\n")
 
     summary = result.summary()
-    header = f"{'arm':<12}{'net Rs':>14}{'gross Rs':>14}{'recovery':>11}{'attempts':>11}{'wasted':>10}"
+    header = f"{'arm':<18}{'net Rs':>14}{'gross Rs':>14}{'recovery':>11}{'attempts':>11}{'wasted':>10}"
     print(header)
     print("-" * len(header))
-    for arm in (Arm.NAIVE, Arm.FIXED_3X, Arm.AGENT):
+    for arm in (Arm.NAIVE, Arm.FIXED_3X, Arm.AGENT_RETRY_ONLY, Arm.AGENT):
         s = summary[arm.value]
         print(
-            f"{arm.value:<12}{s['net_paise'] / 100:>14,.0f}{s['gross_paise'] / 100:>14,.0f}"
+            f"{arm.value:<18}{s['net_paise'] / 100:>14,.0f}{s['gross_paise'] / 100:>14,.0f}"
             f"{s['recovery_rate']:>10.1%}{s['attempts']:>11,.0f}{s['wasted_attempts']:>10,.0f}"
         )
 

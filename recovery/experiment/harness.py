@@ -268,7 +268,12 @@ def run_experiment(
     """The headline measurement."""
     costs = costs or CostModel()
     classifier = Classifier(use_model=False)
-    arms: dict[Arm, list[ArmResult]] = {Arm.NAIVE: [], Arm.FIXED_3X: [], Arm.AGENT: []}
+    arms: dict[Arm, list[ArmResult]] = {
+        Arm.NAIVE: [],
+        Arm.FIXED_3X: [],
+        Arm.AGENT_RETRY_ONLY: [],
+        Arm.AGENT: [],
+    }
 
     for seed in range(seeds):
         batch = BatchGenerator(seed).generate(batch_size)
@@ -279,6 +284,9 @@ def run_experiment(
             Arm.FIXED_3X: fixed_3x_policy(costs=costs),
             # A fresh model per seed: the agent learns within a run, not across
             # independent replications, which would be leaking across seeds.
+            Arm.AGENT_RETRY_ONLY: Policy(
+                success=SuccessModel(), costs=costs, retry_only=True
+            ),
             Arm.AGENT: Policy(success=SuccessModel(), costs=costs),
         }
 
@@ -299,6 +307,13 @@ def run_experiment(
     comparisons = [
         paired_difference(arms[Arm.AGENT], arms[Arm.NAIVE], "agent vs naive"),
         paired_difference(arms[Arm.AGENT], arms[Arm.FIXED_3X], "agent vs fixed-3x"),
+        # The like-for-like number: retry timing against retry timing, which is
+        # what the published 15-40% band actually measures.
+        paired_difference(
+            arms[Arm.AGENT_RETRY_ONLY],
+            arms[Arm.FIXED_3X],
+            "agent (retry-only) vs fixed-3x",
+        ),
         paired_difference(arms[Arm.FIXED_3X], arms[Arm.NAIVE], "fixed-3x vs naive"),
     ]
 
@@ -314,8 +329,13 @@ def run_experiment(
 
 def check_plausibility(result: ExperimentResult) -> str | None:
     """Is the headline inside the published band, or suspiciously outside it?"""
+    # Judged on the retry-only arm: the published band measures retry timing
+    # against retry timing, so comparing the full multi-channel agent to it
+    # would flag a difference in scope as if it were a difference in quality.
     agent_vs_fixed = next(
-        c for c in result.comparisons if c.label == "agent vs fixed-3x"
+        c
+        for c in result.comparisons
+        if c.label == "agent (retry-only) vs fixed-3x"
     )
     low, high = P.PLAUSIBLE_UPLIFT_BAND
     uplift = agent_vs_fixed.relative_uplift
