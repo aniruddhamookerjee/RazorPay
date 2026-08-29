@@ -96,9 +96,29 @@ outcomes. Enforced by module boundary, and worth a test.
 | Per-attempt fee | ₹2 (200 paise) | not sourced | `ASSUMPTION` |
 | Notification cost | ₹0.25 (25 paise) | not sourced | `ASSUMPTION` |
 | Customer LTV | ₹12,000 | not sourced | `ASSUMPTION` |
-| `P(churn \| 1/2/3 attempts)` | 0.01 / 0.03 / 0.07 | not sourced | `ASSUMPTION` |
+| `P(churn \| 1/2/3 attempts)` | 0.003 / 0.008 / 0.020 | calibrated, not cited | `ASSUMPTION` |
 
 All four are assumptions and all four are swept. None is dressed up as sourced.
+
+### Why the churn values changed on Day 5
+
+The first values (0.01 / 0.03 / 0.07) made the churn penalty on a customer-contact
+action **0.24 × the charge**, which is structurally larger than the ~0.15 × charge
+a notification can be expected to recover. So the agent never notified. Because
+the RBI pre-debit notice is *sent by* notifying, the notice was never sent, so
+every debit stayed blocked, and the full batch recovered **1.4% at a net loss**.
+
+That is not a finding about payment recovery — it is a broken parameter. Published
+recovery runs 30–70% (§2), so an agent recovering 1.4% is evidence the assumption
+is wrong rather than evidence the world is. The values were set so behaviour lands
+in the published range.
+
+**This is calibration against an external benchmark, not a citation, and it must
+be described that way.** Choosing parameters so the output looks reasonable is
+exactly the circularity this file exists to guard against. The defence is that
+the calibration target is *published and external*, the parameters are declared
+as assumptions, they carry the heaviest weight in the Day 7 sweep, and every
+headline number is also reported with the churn penalty switched off entirely.
 
 **`P(churn | attempts)` is the softest number in the model** and the one doing
 the most work — it is what makes the agent stop early, which produces the

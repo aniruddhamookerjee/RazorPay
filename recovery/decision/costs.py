@@ -37,7 +37,24 @@ DEFAULT_LTV_MONTHS = 12
 
 # ASSUMPTION, and the softest number in the model. Pestering a customer who
 # already failed once costs goodwill; the cost rises with each attempt.
-DEFAULT_CHURN_BY_ATTEMPTS: dict[int, float] = {0: 0.000, 1: 0.010, 2: 0.030, 3: 0.070}
+#
+# CALIBRATED, NOT CITED — and the distinction matters. The first values tried
+# here (0.01 / 0.03 / 0.07) made the churn penalty on a contact action
+# 0.24 x the charge, which is structurally larger than the ~0.15 a notification
+# can be expected to recover. The agent therefore never notified, so the RBI
+# pre-debit notice was never sent, so every debit stayed blocked, and the whole
+# batch recovered 1.4% at a net loss.
+#
+# That is not a finding about payment recovery. Published recovery rates run
+# 30-70% (sources.md section 2), so an agent recovering 1.4% is evidence the
+# parameters are wrong rather than evidence the world is. These values are set
+# so that behaviour lands in the published range — an external sanity check, not
+# a citation, and the honest description is "calibrated against a benchmark".
+#
+# Because they are chosen rather than sourced, they carry the heaviest weight in
+# the Day 7 sensitivity sweep, and every headline is also reported with the
+# churn penalty switched off entirely.
+DEFAULT_CHURN_BY_ATTEMPTS: dict[int, float] = {0: 0.000, 1: 0.003, 2: 0.008, 3: 0.020}
 
 
 @dataclass(frozen=True)
