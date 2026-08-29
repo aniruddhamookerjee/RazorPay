@@ -126,7 +126,46 @@ that benchmark does not cover."**
 
 ---
 
-## 6. What is still not verified
+## 6. The Hinglish check, and what it caught
+
+WORKPLAN §3.1 said to validate the local model's Hinglish before relying on it.
+Doing so changed the design three times.
+
+**Zero-shot Hinglish does not work.** Asked plainly for Hinglish,
+`qwen2.5:7b-instruct` returned fluent plain English every time — zero Hindi
+words across three attempts. Few-shot examples plus an explicit list of expected
+Hindi markers fixed it: 9–12 markers per message, naturally code-mixed. A
+`looks_like_hinglish()` check now rejects any "Hinglish" output that is really
+English, because shipping English under a Hinglish label to a room of Hindi
+speakers would be worse than shipping English and saying so.
+
+**The model printed an internal enum at a customer.** One message read
+*"aapka charge bank_unavailable se fail hua"*. Only human-readable descriptions
+reach the prompt now, and any output containing a `Cause` value is discarded.
+
+**The model invented a date.** One message said *"there wasn't enough balance on
+the 15th"*. No date exists anywhere in the facts it was given. Any digit outside
+the `{amount}` placeholder now disqualifies a template.
+
+**It also gave the wrong instruction.** A customer whose bank was down was told
+to go and check their account, when the correct message was that no action was
+needed. Automated guards cannot catch this — it needs a person. There are only
+18 templates (9 causes × 2 languages), so
+`python -m recovery.narration` dumps the whole set for review in one screen.
+
+**Honest assessment of the Hinglish quality:** it is serviceable, not polished.
+Phrases like *"thoda problem tha kyunki"* are grammatically rough and a native
+speaker would notice. The hand-written fallbacks are better than the generated
+ones and are what ships when the model is unavailable.
+
+**Cost.** ~15 seconds per generation. Per-customer messages across 10,000 events
+are impossible, so messages are generated as templates per (cause, language,
+channel) and the name and amount are filled in locally. The model never handles
+a rupee figure.
+
+---
+
+## 7. What is still not verified
 
 - **RBI thresholds** are checked against secondary reporting, not the circular
   text. The 24h pre-debit notice and ₹15,000 AFA threshold are confirmed; the
