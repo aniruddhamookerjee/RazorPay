@@ -133,6 +133,7 @@ class Policy:
         *,
         now: datetime,
         attempts_so_far: int = 1,
+        contacts_so_far: int = 0,
         first_failure_at: datetime | None = None,
         pre_debit_notice_sent_at: datetime | None = None,
         customer_opted_out: bool = False,
@@ -148,6 +149,7 @@ class Policy:
         base_ctx = ComplianceContext(
             amount_paise=amount,
             attempts_so_far=attempts_so_far,
+            contacts_so_far=contacts_so_far,
             cause=cause,
             first_failure_at=first_failure_at,
             scheduled_for=now,

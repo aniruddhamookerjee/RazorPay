@@ -40,7 +40,12 @@ class Settings(BaseSettings):
     seed: int = 42
 
     # --- Safety caps (see WORKPLAN.md Day 4: stopping rules + compliance gate) ---
+    # Debit attempts only. A notification is not a retry, and counting one
+    # against this cap left the agent a single real retry per case.
     max_attempts: int = 3
+    # Customer contacts (notify / re-auth request) have their own limit, so
+    # messaging is bounded without eating the retry budget.
+    max_contacts: int = 2
     recovery_window_days: int = 7
     afa_threshold_inr: int = 15_000
     live_subset_size: int = 100

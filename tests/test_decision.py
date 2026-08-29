@@ -248,6 +248,7 @@ def base_ctx(**kwargs) -> ComplianceContext:
     params = dict(
         amount_paise=49_900,
         attempts_so_far=1,
+        contacts_so_far=0,
         cause=Cause.INSUFFICIENT_FUNDS,
         first_failure_at=NOW - timedelta(hours=2),
         scheduled_for=NOW,

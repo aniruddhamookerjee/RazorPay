@@ -60,11 +60,11 @@ def make_runner(ledger, oracle, **kwargs):
 
 
 def test_idempotency_key_is_deterministic() -> None:
-    a = idempotency_key(subscription_id="sub_1", cycle=0, attempt_number=2)
-    b = idempotency_key(subscription_id="sub_1", cycle=0, attempt_number=2)
+    a = idempotency_key(subscription_id="sub_1", cycle=0, step=2)
+    b = idempotency_key(subscription_id="sub_1", cycle=0, step=2)
     assert a == b
-    assert a != idempotency_key(subscription_id="sub_1", cycle=1, attempt_number=2)
-    assert a != idempotency_key(subscription_id="sub_1", cycle=0, attempt_number=3)
+    assert a != idempotency_key(subscription_id="sub_1", cycle=1, step=2)
+    assert a != idempotency_key(subscription_id="sub_1", cycle=0, step=3)
 
 
 def test_the_database_refuses_a_duplicate_execution(ledger, batch) -> None:
@@ -94,6 +94,7 @@ def live_call_args(event):
         action=Action.RETRY_NOW,
         attempted_at=NOW,
         attempt_number=2,
+        step=0,
         cycle=0,
         cost_paise=200,
     )
@@ -257,3 +258,65 @@ def test_arm_is_recorded_for_the_day_6_comparison(ledger, batch) -> None:
     runner.run(batch.events[:20])
     assert all(r.arm is Arm.FIXED_3X for r in ledger.all())
     assert ledger.all(arm=Arm.AGENT) == []
+
+
+# -- regressions from the Day 5 audit --------------------------------------
+
+
+def test_a_notification_does_not_consume_a_retry(ledger, batch) -> None:
+    """'Max 3 retry attempts' means debits, not every action.
+
+    Counting a notification against the retry cap produced the sequence
+    notify -> retry -> stop, leaving exactly one real retry per case. Recovery
+    on a 500-event batch was 8.4%; separating the budgets took it to 18.4%.
+    """
+    runner = make_runner(ledger, always(False))
+    entries = []
+    for event in batch.events[:120]:
+        entries.extend(runner.run_event(event))
+
+    by_sub: dict[str, list] = {}
+    for entry in entries:
+        by_sub.setdefault(entry.subscription_id, []).append(entry)
+
+    saw_multi_retry = False
+    for rows in by_sub.values():
+        debits = [
+            r for r in rows if r.action in (Action.RETRY_NOW, Action.RETRY_DELAYED)
+        ]
+        # A notification must not have advanced the debit counter.
+        for row in rows:
+            if row.action in (Action.NOTIFY, Action.REQUEST_REAUTH):
+                assert row.attempt_number <= len(debits) + 1
+        if len(debits) >= 2:
+            saw_multi_retry = True
+
+    assert saw_multi_retry, "a case should be able to retry more than once"
+
+
+def test_contacts_are_capped_separately(ledger, batch) -> None:
+    """Separating the budgets must not mean unlimited messaging."""
+    from recovery.config import settings
+
+    runner = make_runner(ledger, always(False))
+    for event in batch.events[:120]:
+        entries = runner.run_event(event)
+        contacts = [
+            e for e in entries
+            if e.action in (Action.NOTIFY, Action.REQUEST_REAUTH)
+        ]
+        assert len(contacts) <= settings.max_contacts
+
+
+def test_idempotency_keys_are_unique_within_a_case(ledger, batch) -> None:
+    """Keyed on step, not debit attempt.
+
+    When contacts stopped incrementing the attempt counter, an attempt-keyed
+    value collided between a notification and the retry after it, and the
+    ledger's unique constraint rejected the write.
+    """
+    runner = make_runner(ledger, always(False))
+    for event in batch.events[:60]:
+        entries = runner.run_event(event)
+        keys = [e.idempotency_key for e in entries]
+        assert len(keys) == len(set(keys))

@@ -13,7 +13,7 @@ handed in by the experiment harness, which is allowed to know. This module
 never learns where outcomes come from.
 
 **Idempotency.** Every execution carries a key derived from
-`(subscription, cycle, attempt)`. The ledger has a unique constraint on it, so a
+`(subscription, cycle, step)`. The ledger has a unique constraint on it, so a
 crash mid-run followed by a re-run cannot charge anyone twice — the second write
 is rejected by the database rather than by a check someone remembered to write.
 
@@ -52,9 +52,16 @@ _EFFECTFUL = {
 }
 
 
-def idempotency_key(*, subscription_id: str, cycle: int, attempt_number: int) -> str:
-    """Deterministic, so a replay collides with itself instead of double-charging."""
-    return f"{subscription_id}:c{cycle}:a{attempt_number}"
+def idempotency_key(*, subscription_id: str, cycle: int, step: int) -> str:
+    """Deterministic, so a replay collides with itself instead of double-charging.
+
+    Keyed on the *step* — the nth action taken on this case — rather than on the
+    debit attempt number. Once contacts stopped incrementing the attempt counter,
+    an attempt-keyed value collided between a notification and the retry that
+    followed it, and the ledger's unique constraint rejected the second row.
+    Step is monotonic per case and still deterministic on replay.
+    """
+    return f"{subscription_id}:c{cycle}:s{step}"
 
 
 @dataclass(frozen=True)
@@ -76,6 +83,7 @@ class Executor(Protocol):
         action: Action,
         attempted_at: datetime,
         attempt_number: int,
+        step: int,
         cycle: int,
         cost_paise: int,
     ) -> ExecutionResult: ...
@@ -99,13 +107,14 @@ class SimulatedExecutor:
         action: Action,
         attempted_at: datetime,
         attempt_number: int,
+        step: int,
         cycle: int,
         cost_paise: int,
     ) -> ExecutionResult:
         key = idempotency_key(
             subscription_id=event.attempt.subscription_id,
             cycle=cycle,
-            attempt_number=attempt_number,
+            step=step,
         )
 
         if action not in _EFFECTFUL:
@@ -160,13 +169,14 @@ class LiveExecutor:
         action: Action,
         attempted_at: datetime,
         attempt_number: int,
+        step: int,
         cycle: int,
         cost_paise: int,
     ) -> ExecutionResult:
         key = idempotency_key(
             subscription_id=event.attempt.subscription_id,
             cycle=cycle,
-            attempt_number=attempt_number,
+            step=step,
         )
 
         if not self.enabled:

@@ -97,7 +97,13 @@ class RecoveryRunner:
 
         clock = VirtualClock(now=first_failure_at)
         entries: list[LedgerEntry] = []
+        # Debits and contacts are budgeted separately. Counting a notification
+        # against the retry cap left every case with a single real retry:
+        # notify -> retry -> stop, which is most of why the first end-to-end run
+        # recovered so little.
         attempts = 1  # the original charge already failed once
+        contacts = 0
+        passes = 0
         # Tracked as state rather than a parameter: the agent can earn the right
         # to debit by notifying first, which is the whole point of the rule.
         notice_sent_at = pre_debit_notice_sent_at
@@ -107,6 +113,7 @@ class RecoveryRunner:
                 classified,
                 now=clock.now,
                 attempts_so_far=attempts,
+                contacts_so_far=contacts,
                 first_failure_at=first_failure_at,
                 pre_debit_notice_sent_at=notice_sent_at,
                 customer_opted_out=customer_opted_out,
@@ -130,6 +137,7 @@ class RecoveryRunner:
                 action=decision.chosen_action,
                 attempted_at=attempted_at,
                 attempt_number=attempts + 1,
+                step=passes,
                 cycle=cycle,
                 cost_paise=cost,
             )
@@ -191,12 +199,21 @@ class RecoveryRunner:
             if result.outcome is AttemptStatus.SUCCEEDED:
                 break
 
-            attempts += 1
-            clock.advance_to(attempted_at)
+            if decision.chosen_action in _DEBIT_ACTIONS:
+                attempts += 1
+            elif decision.chosen_action in _NOTICE_ACTIONS:
+                contacts += 1
 
-            # Belt and braces. The policy already enforces both, but a runner
-            # that could loop forever on a policy bug is not something to ship.
+            clock.advance_to(attempted_at)
+            passes += 1
+
+            # Belt and braces. The policy enforces all of these, but a runner
+            # that could spin forever on a policy bug is not something to ship —
+            # and now that some actions do not advance `attempts`, a pass cap is
+            # the guard that actually terminates the loop.
             if attempts > settings.max_attempts:
+                break
+            if passes >= settings.max_attempts + settings.max_contacts + 2:
                 break
             if clock.now - first_failure_at >= timedelta(
                 days=settings.recovery_window_days

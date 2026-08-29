@@ -53,7 +53,9 @@ class ComplianceContext:
     """What the gate needs to know about a case to judge an action."""
 
     amount_paise: int
+    # Debit attempts only — a notification is not a retry.
     attempts_so_far: int
+    contacts_so_far: int
     cause: Cause
     first_failure_at: datetime
     scheduled_for: datetime
@@ -97,6 +99,8 @@ def check(action: Action, ctx: ComplianceContext) -> Verdict:
     if action in (Action.NOTIFY, Action.REQUEST_REAUTH):
         if not ctx.messaging_consent:
             return Verdict.block("no_messaging_consent")
+        if ctx.contacts_so_far >= settings.max_contacts:
+            return Verdict.block("max_contacts_reached")
         if _in_quiet_hours(ctx.scheduled_for):
             return Verdict.block("quiet_hours")
         return Verdict.ok()
