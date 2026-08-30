@@ -202,7 +202,13 @@ class BatchGenerator:
                 minutes=int(self.rng.integers(0, 60)),
             )
 
+            # Identifiers are derived from the seed, not from uuid4(). The
+            # default factories on the models are random, and the experiment's
+            # common-random-numbers hash keys on event_id — so uuid ids made
+            # every replay draw different coins and the whole measurement
+            # non-reproducible, while the batch CONTENT looked identical.
             attempt = ChargeAttempt(
+                attempt_id=f"att_s{self.seed}_c{cycle}_{i:06d}",
                 subscription_id=f"sub_sim_{i:06d}",
                 customer_id=f"cust_sim_{i:06d}",
                 mandate_id=f"mandate_sim_{i:06d}",
@@ -218,6 +224,7 @@ class BatchGenerator:
             )
 
             event = FailureEvent(
+                    event_id=f"evt_s{self.seed}_c{cycle}_{i:06d}",
                     attempt=attempt,
                     error_code="BAD_REQUEST_ERROR",
                     error_reason=reason,

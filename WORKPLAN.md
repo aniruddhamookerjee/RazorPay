@@ -380,24 +380,25 @@ they are kept here rather than quietly edited so the difference is visible:
 > ~~"…using **Z% fewer attempts**…the advantage holds for any day-3
 > insufficient-funds recovery rate above ~N%."~~
 
-- **"Fewer attempts" is false.** The agent uses 5,400 attempts against the
-  baseline's 3,581 and wastes more. It wins on money, not efficiency.
+- **"Fewer attempts" is false.** The agent uses 5,292 attempts against the
+  baseline's 3,584 and wastes more. It wins on money, not efficiency.
 - **"Smarter retry timing" is false as the mechanism.** Flattening the delay
-  curve so timing is worthless *increases* the agent's advantage from +33.9% to
-  +133.5%. The result comes from cause-aware triage — declining dead mandates
-  and hard declines, and using re-auth where retries cannot work.
+  curve so timing is worthless *increases* the agent's advantage from +29.5% to
+  +121.0%, monotonically. The result comes from cause-aware triage — declining
+  dead mandates and hard declines, and using re-auth where retries cannot work.
 
 What the data does support:
 
 > *"Across 30 seeded replays of a 2,000-event batch over 3 billing cycles, the
-> cause-aware agent recovered **₹1,365,813 net** versus **₹886,153** for a
+> cause-aware agent recovered **₹1,273,199 net** versus **₹899,475** for a
 > fixed-3× retry baseline on identical events with identical coin flips — a
-> paired difference of **+₹479,660** (95% CI +₹361,762 to +₹597,557), with
+> paired difference of **+₹373,724** (95% CI +₹236,254 to +₹511,194), with
 > **zero** compliance-rule violations and a complete audit trail for every
-> action taken and every action blocked. The advantage comes from declining
-> unrecoverable cases and choosing the right channel, not from retry timing. It
-> reverses in a world where recovery rates are half those published, and where
-> customer lifetime is 36 months."*
+> action taken and every action blocked. On a like-for-like retry-only
+> comparison the gain is **+32.0%**, inside the published 15–40% band. The
+> advantage comes from declining unrecoverable cases and choosing the right
+> channel, not from retry timing. It disappears if recovery rates are a quarter
+> lower than published, and reverses at a 36-month customer lifetime."*
 
 Every number in that sentence is reproducible from the repo by a stranger:
 

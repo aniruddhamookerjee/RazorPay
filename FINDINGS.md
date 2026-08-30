@@ -3,6 +3,13 @@
 What the measurement actually shows — including the parts that contradict what
 this project set out to demonstrate.
 
+> **All numbers below were re-measured on 30 Aug after a reproducibility bug was
+> fixed.** `event_id` was defaulting to `uuid4()`, and the experiment's
+> common-random-numbers hash keys on it — so every replay drew different coins
+> and no reported figure could be reproduced, while every content-level test
+> still passed. Earlier drafts of this file quoted the pre-fix numbers. The
+> conclusions survived; the figures moved.
+
 ---
 
 ## 1. Headline
@@ -12,13 +19,18 @@ this project set out to demonstrate.
 
 | arm | net | gross | recovery | attempts | wasted |
 |---|---|---|---|---|---|
-| naive (1 retry) | ₹511,419 | ₹650,381 | 14.9% | 2,213 | 1,644 |
-| fixed 3× (72h apart) | ₹886,153 | ₹1,063,424 | 24.7% | 3,581 | 2,115 |
-| agent, retry-only | ₹1,297,608 | ₹1,988,384 | 30.8% | 5,109 | 3,275 |
-| **agent, full** | **₹1,365,813** | ₹2,125,298 | **33.1%** | 5,400 | 3,440 |
+| naive (1 retry) | ₹507,324 | ₹646,299 | 14.9% | 2,212 | 1,642 |
+| fixed 3× (72h apart) | ₹899,475 | ₹1,076,741 | 24.8% | 3,584 | 2,102 |
+| agent, retry-only | ₹1,187,633 | ₹1,867,723 | 29.3% | 4,982 | 3,236 |
+| **agent, full** | **₹1,273,199** | ₹2,021,509 | **32.0%** | 5,292 | 3,401 |
 
-**agent vs fixed-3×: +₹479,660 per run [+361,762, +597,557], = +54.1%**
+**agent vs fixed-3×: +₹373,724 per run [+236,254, +511,194], = +41.5%**
+**agent (retry-only) vs fixed-3×: +₹288,158 [+127,548, +448,767], = +32.0%**
 Compliance violations: **0**.
+
+The retry-only figure of **+32.0% sits inside the published 15–40% band**, and the
+harness's plausibility check now passes rather than flagging. That happened by
+fixing a bug, not by tuning anything.
 
 ---
 
@@ -36,10 +48,13 @@ It went **up**:
 
 | delay sensitivity | agent vs fixed-3× |
 |---|---|
-| 0.0 — timing worthless | **+133.5%** |
-| 1.0 — timing as configured | +33.9% |
+| 0.0 — timing worthless | **+121.0%** |
+| 0.5 — half | +88.5% |
+| 1.0 — timing as configured | +29.5% |
 
-15 seeds, both significant. The agent wins *more* when timing stops mattering.
+15 seeds, all significant, and cleanly monotonic: **the more timing matters, the
+smaller the agent's lead gets.** It wins most in a world where timing is
+worthless.
 
 **What is actually driving the result**, then, is cause-aware triage:
 
@@ -67,16 +82,16 @@ opposite:
 
 | arm | attempts | wasted |
 |---|---|---|
-| fixed 3× | 3,581 | 2,115 |
-| agent | 5,400 | 3,440 |
+| fixed 3× | 3,584 | 2,102 |
+| agent | 5,292 | 3,401 |
 
 The agent does **more** work, not less, and wastes more in absolute terms. It
 wins on money recovered, not on efficiency. Every version of the efficiency
 claim has to come out.
 
 The one defensible efficiency statement is per-recovery: the agent spends
-~5,400 attempts for 33.1% recovery against 3,581 for 24.7%, so ~163 attempts
-per point of recovery versus ~145. It is still **worse** on that measure.
+~5,292 attempts for 32.0% recovery against 3,584 for 24.8%, so ~165 attempts per
+point of recovery versus ~145. It is still **worse** on that measure.
 
 ---
 
@@ -88,19 +103,20 @@ From the sweep (6 seeds/point — indicative, not precise):
 |---|---|
 | delay sensitivity | holds across 0.0–1.0 (and is *stronger* at 0.0, §2) |
 | attempt cost | holds from ₹0 to ₹20 per attempt |
-| **base recovery rate × 0.5** | **agent LOSES by 58%** |
-| **LTV = 36 months** | **agent LOSES by 149%** |
-| churn penalty off | +229.7% |
+| **base recovery rate × 0.75** | **-2.1%, not significant — the edge is gone** |
+| **base recovery rate × 0.5** | **agent LOSES by 118%** |
+| **LTV = 36 months** | **agent LOSES by 143%** |
+| churn penalty off | +234.3% |
 
 Two genuine failure modes, and both should be stated rather than hidden:
 
-**In a harder world the agent loses.** Halve every recovery rate and the fixed
-schedule beats it. The agent stops early when expected value goes negative; the
+**In a harder world the agent loses.** Cut recovery rates by a quarter and the
+advantage is already gone; halve them and the fixed schedule beats it outright. The agent stops early when expected value goes negative; the
 dumb schedule keeps trying and occasionally gets lucky. Caution is the right
 policy on average and the wrong policy when everything is marginal.
 
 **With a long customer lifetime the agent stops acting.** At 36 months the churn
-penalty dominates every action and the agent does almost nothing. This is the
+penalty dominates every action and the agent does almost nothing (-142.9%). This is the
 softest parameter in the model (`sources.md` §3) driving the largest swing, and
 it is the strongest argument for reporting the churn-off number alongside every
 headline.
@@ -110,8 +126,12 @@ headline.
 ## 5. Why the uplift sits above the published band
 
 Published smart-retry uplift over fixed schedules is **15–40%**
-(`sources.md` §2). Ours is +54.1% full, +46.4% retry-only. The plausibility
-check in the harness flags this automatically rather than letting it pass.
+(`sources.md` §2). Ours is **+41.5% full, +32.0% retry-only**.
+
+The retry-only arm — the one that is actually like-for-like with the band — now
+sits **inside** it, and the harness's plausibility check passes. Before the
+reproducibility fix these read +54.1% and +46.4%, and the check was flagging
+them. Both moved down once the coins stopped being random.
 
 The most likely explanation follows from §2: the published band measures retry
 *timing* against retry timing, and our advantage is not timing — it is triage.
@@ -119,10 +139,10 @@ We are measuring a broader intervention against a narrower benchmark, so the
 comparison is not like-for-like and the number should not be quoted as though
 it were.
 
-The honest framing: **"+54% against a fixed-3× baseline in our simulation,
-which is above the published 15–40% band for smart retries — most likely because
-our agent also declines unrecoverable cases and uses re-authentication, which
-that benchmark does not cover."**
+The honest framing: **"+32% on a like-for-like retry-only comparison, inside the
+published 15–40% band; +41.5% once the agent is also allowed to decline
+unrecoverable cases and use re-authentication, which that benchmark does not
+cover."**
 
 ---
 
@@ -176,3 +196,9 @@ a rupee figure.
   target rather than an invented one, but it is still calibration.
 - **The simulator is ours.** Every number above describes a world we built from
   cited benchmarks. §4 is the honest answer to how much that matters.
+- **Reproducibility was broken until 30 Aug** and nothing caught it: the batch
+  content was identical run to run, so every content-level test passed while the
+  outcomes were random. It was found by noticing that two exports of the same
+  seed disagreed. There is now a test asserting the whole experiment is
+  reproducible, but the general lesson stands — a test suite that checks content
+  does not check identity.

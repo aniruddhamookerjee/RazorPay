@@ -38,3 +38,8 @@ cloudflared.exe
 
 # Experiment output (regenerate with: python -m recovery.experiment --out results.json)
 results.json
+
+# Dashboard export + local preview copy
+dashboard_data.json
+sensitivity.json
+_preview_console.html

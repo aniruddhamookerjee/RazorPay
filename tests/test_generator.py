@@ -205,3 +205,23 @@ def test_live_subset_is_drawn_from_the_same_population() -> None:
 def test_live_subset_cannot_exceed_the_batch() -> None:
     with pytest.raises(ValueError):
         BatchGenerator(seed=1).generate_split(volume_count=10, live_count=50)
+
+
+def test_event_ids_are_derived_from_the_seed_not_random() -> None:
+    """Reproducibility depends on identifiers, not just content.
+
+    The models default their ids to uuid4(). The generator relied on that, so
+    two batches from the same seed had identical CONTENT but different
+    event_ids — and the experiment's common-random-numbers hash keys on
+    event_id. Every replay therefore drew different coins and no reported
+    number could be reproduced, while every content-level test still passed.
+    """
+    a = BatchGenerator(42).generate(50)
+    b = BatchGenerator(42).generate(50)
+    assert [e.event_id for e in a.events] == [e.event_id for e in b.events]
+    assert [e.attempt.attempt_id for e in a.events] == [
+        e.attempt.attempt_id for e in b.events
+    ]
+    assert a.events[0].event_id.startswith("evt_s42_")
+    # Different seeds must still differ, or arms would share coins wrongly.
+    assert BatchGenerator(7).generate(1).events[0].event_id != a.events[0].event_id

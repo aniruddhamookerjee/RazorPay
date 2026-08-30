@@ -300,3 +300,24 @@ def test_retry_only_agent_never_requests_reauth(batch) -> None:
             pre_debit_notice_sent_at=NOW - timedelta(hours=30),
         )
         assert decision.chosen_action is not Action.REQUEST_REAUTH
+
+
+def test_the_whole_experiment_is_reproducible() -> None:
+    """The headline claim is that a stranger can reproduce these numbers."""
+    a = run_experiment(seeds=2, cycles=1, batch_size=150).summary()
+    b = run_experiment(seeds=2, cycles=1, batch_size=150).summary()
+    assert a == b
+
+
+def test_common_random_numbers_survive_regeneration() -> None:
+    """CRN keys on event_id, so ids must be stable across generations."""
+    from recovery.experiment.harness import make_oracle
+    from recovery.simulation.generator import BatchGenerator as BG
+
+    one, two = BG(3).generate(40), BG(3).generate(40)
+    o1 = make_oracle(one.truth, CommonRandomNumbers(seed=3))
+    o2 = make_oracle(two.truth, CommonRandomNumbers(seed=3))
+    at = lambda e: e.occurred_at + timedelta(hours=72)
+    assert [o1(e, Action.RETRY_DELAYED, at(e), 2) for e in one.events] == [
+        o2(e, Action.RETRY_DELAYED, at(e), 2) for e in two.events
+    ]
